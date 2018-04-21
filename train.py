@@ -8,8 +8,9 @@ def preprocess(observation):
     # binary format, and resize to (80,80)
     observation = cv2.cvtColor(cv2.resize(observation, (80, 80)), cv2.COLOR_BGR2GRAY)
     ret, observation = cv2.threshold(observation,1,255,cv2.THRESH_BINARY)
-    # remove mean
-    observation -= 128
+    # remove mean, must transform observation from uint8 to int8/float32 before remove mean!!!
+    observation = np.array(observation,dtype=np.float32) - 128
+    #observation -= 128
     # reshape to (80,80,1)
     return np.reshape(observation,(80,80,1))
 
@@ -32,6 +33,7 @@ def playFlappyBird():
         next_state = np.append(curr_state[...,1:], next_observation, axis=2)
         # train DQN
         dqn.train_qnetwork(curr_state, action, reward, next_state, terminal)
-        
+        # update current state
+        curr_state = next_state
         
 playFlappyBird()

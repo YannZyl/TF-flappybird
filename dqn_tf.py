@@ -9,8 +9,8 @@ class BrainDQN:
                  inputs_w = 80,
                  inputs_h = 80,
                  inputs_c = 4,
-                 alpha=0.1, 
-                 gamma=0.9, 
+                 alpha=0.0001, 
+                 gamma=0.99, 
                  init_epsilon = 0.05,
                  final_epsilon = 0,
                  batch_size = 32, 
@@ -53,7 +53,7 @@ class BrainDQN:
         with tf.name_scope('Optimizer'):
             self.q_value = tf.reduce_max(tf.multiply(self.q_eval_values, self.curr_action), axis=1, keep_dims=True)
             self.eval_loss = tf.reduce_mean(tf.square(self.q_target-self.q_value))
-            self.optimzer = tf.train.AdamOptimizer(1e-4).minimize(self.eval_loss, var_list=self.q_eval_vars)
+            self.optimzer = tf.train.AdamOptimizer(self.alpha).minimize(self.eval_loss, var_list=self.q_eval_vars)
         # assign op
         self.assign_op = self.copy_qnet()
         # Saver and Session
@@ -95,7 +95,10 @@ class BrainDQN:
         action = [0] * self.actions
         if random.random() < self.epsilon:
             index = np.random.randint(0, self.actions)
-        action[index] = 1    
+        action[index] = 1
+        # epsilon decay after a train step
+        if self.step > self.observe_step and self.step < self.observe_step + self.explore_step:
+            self.epsilon -= (self.init_epsilon - self.final_epsilon) / self.explore_step
         return action
     
     def train_qnetwork(self, curr_state, action, reward, next_state, terminal):
@@ -126,10 +129,7 @@ class BrainDQN:
             # optimizer evaluate q network
             feed_dict = {self.curr_state:batch_S, self.curr_action:batch_A, self.q_target: q_target[:,np.newaxis]}
             self.sess.run(self.optimzer, feed_dict=feed_dict)
-            
-            # epsilon decay after a train step
-            self.epsilon -= (self.init_epsilon - self.final_epsilon) / self.explore_step
-            
+             
             # save model
             if self.step % self.save_step == 0:
                 self.saver.save(self.sess, 'model/dqn.cpkt')
