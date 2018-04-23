@@ -17,8 +17,9 @@ class BrainDQN:
                  memory_size = 50000,
                  observe_step = 100,
                  explore_step = 200000,
-                 update_step = 300,
-                 save_step = 10000):
+                 update_step = 100,
+                 save_step = 10000,
+                 use_double_q = True):
         self.alpha = alpha
         self.inputs_w = inputs_w
         self.inputs_h = inputs_h
@@ -33,6 +34,7 @@ class BrainDQN:
         self.explore_step = explore_step
         self.update_step = update_step
         self.save_step = save_step
+        self.use_double_q = use_double_q
         self.epsilon = init_epsilon
         # experience replay deque
         self.memory_replay = deque()
@@ -43,17 +45,17 @@ class BrainDQN:
             self.next_state = tf.placeholder(tf.float32, [None,inputs_h,inputs_w,inputs_c], name='S_')
             self.curr_action = tf.placeholder(tf.float32, [None,actions], name='A')
             self.q_target = tf.placeholder(tf.float32, [None,1], name='MaxQValue')
-        # evaluate Q network, update by backpropagation automatically
-        with tf.name_scope('Qnetwork_evaluate'):
-            self.q_eval_values, self.q_eval_vars = self.build_qnet(self.curr_state, name='eval')
-        # fixed Q target. target Q network, update by coping params from evalute Q network manually
+        # online Q network, update by backpropagation automatically
+        with tf.name_scope('Qnetwork_online'):
+            self.q_onln_values, self.q_onln_vars = self.build_qnet(self.curr_state, name='online')
+        # target Q network, update by coping params from online Q network manually each t steps
         with tf.name_scope('Qnetwork_target'):
             self.q_trgt_values, self.q_trgt_vars = self.build_qnet(self.next_state, name='target')
-        # optimizer for evaluate Q network
+        # optimizer for online Q network
         with tf.name_scope('Optimizer'):
-            self.q_value = tf.reduce_max(tf.multiply(self.q_eval_values, self.curr_action), axis=1, keep_dims=True)
-            self.eval_loss = tf.reduce_mean(tf.square(self.q_target-self.q_value))
-            self.optimzer = tf.train.AdamOptimizer(self.alpha).minimize(self.eval_loss, var_list=self.q_eval_vars)
+            self.q_value = tf.reduce_sum(tf.multiply(self.q_onln_values, self.curr_action), axis=1, keep_dims=True)
+            self.onln_loss = 0.5 * tf.reduce_mean(tf.square(self.q_target-self.q_value))
+            self.optimzer = tf.train.AdamOptimizer(self.alpha, beta1=0.5).minimize(self.onln_loss, var_list=self.q_onln_vars)
         # assign op
         self.assign_op = self.copy_qnet()
         # Saver and Session
@@ -78,8 +80,8 @@ class BrainDQN:
     
     def copy_qnet(self):
         assign_op = []
-        for eval_var, trgt_var in zip(self.q_eval_vars, self.q_trgt_vars):
-            assign_op += [tf.assign(trgt_var, eval_var)]
+        for onln_var, trgt_var in zip(self.q_onln_vars, self.q_trgt_vars):
+            assign_op += [tf.assign(trgt_var, onln_var)]
         return assign_op
             
     def get_action(self, state):
@@ -118,13 +120,19 @@ class BrainDQN:
             
             # get Q value of next state S_ using q target networks
             # fixed target
-            next_qvals = self.sess.run(self.q_trgt_values, feed_dict={self.next_state: batch_S_})
+            next_qvals_onln, next_qvals_trgt = self.sess.run([self.q_onln_values, self.q_trgt_values], \
+                                feed_dict={self.curr_state:batch_S_, self.next_state: batch_S_})
+            if self.use_double_q:
+                next_action = np.argmax(next_qvals_onln, axis=1)
+                max_q_val = next_qvals_trgt[np.arange(next_qvals_trgt.shape[0]), next_action]
+            else:
+                max_q_val = np.max(next_qvals_trgt, axis=1)
             # compute gt q value
             # terminal states: gt = R
             # !termnal states: gt = R + gamma * max_a_val(next_state)
             q_target = batch_R
             idx = np.where(batch_T == False)[0]
-            q_target[idx] += self.gamma * np.max(next_qvals, axis=1)[idx]
+            q_target[idx] += self.gamma * max_q_val[idx]
             
             # optimizer evaluate q network
             feed_dict = {self.curr_state:batch_S, self.curr_action:batch_A, self.q_target: q_target[:,np.newaxis]}
@@ -132,7 +140,7 @@ class BrainDQN:
              
             # save model
             if self.step % self.save_step == 0:
-                self.saver.save(self.sess, 'model/dqn.cpkt')
+                self.saver.save(self.sess, 'model/dqn_{}.cpkt'.format(self.use_double_q))
             # update targe q network
             if self.step % self.update_step == 0:
                 self.sess.run(self.assign_op)

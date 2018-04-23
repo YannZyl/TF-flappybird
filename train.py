@@ -1,8 +1,11 @@
 # -*- coding: utf-8 -*-
 import cv2
 import numpy as np
+import os
 from dqn_tf import BrainDQN
+import matplotlib.pyplot as plt
 from game.flappy_bird import FlappyBirdGame
+from sklearn.externals import joblib
 
 def preprocess(observation):
     # binary format, and resize to (80,80)
@@ -14,15 +17,17 @@ def preprocess(observation):
     # reshape to (80,80,1)
     return np.reshape(observation,(80,80,1))
 
-def playFlappyBird():
+def playFlappyBird(use_double_q=False):
     num_actions = 2
-    dqn = BrainDQN(num_actions)
+    dqn = BrainDQN(num_actions, use_double_q=use_double_q)
     game = FlappyBirdGame()
     init_state = np.array([1,0], dtype=np.float32)
     observation, reward, terminal = game.frame_step(init_state)
     observation = preprocess(observation)
     # generate first batch 
     curr_state = np.concatenate((observation,observation,observation,observation), axis=2)
+    records = []
+    score = 0
     # train DQN
     while True:
         # get action at current state
@@ -35,5 +40,20 @@ def playFlappyBird():
         dqn.train_qnetwork(curr_state, action, reward, next_state, terminal)
         # update current state
         curr_state = next_state
-        
+        # update score
+        score += reward
+        # update record, clear score to start next episode
+        if terminal:
+            records.append(score)
+            score = 0
+        # save every t episode
+        if terminal and len(records) % 10 == 0 and len(records) > 0:
+            if os.path.exists('output/records.pkl'):
+                os.remove('output/records.pkl')
+            joblib.dump(records, 'output/records.pkl')
+
+
 playFlappyBird()
+records = joblib.load('output/records.pkl')
+plt.plot(np.arange(len(records)), records, 'b')
+plt.show()

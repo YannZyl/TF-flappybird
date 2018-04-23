@@ -11,3 +11,12 @@ Deep Reinforcemnet Learning for playing Flappy Bird Game. This is a tensorflow v
 ```python
 python train.py
 ```
+
+param `use_double_q` indicate algorithm whether perform original DQN or double DQN
+
+3. score in training step
+
+x: episodes
+y: scores in each episode
+
+![img](https://github.com/YannZyl/TF-flappybird/blob/master/images/origin.png)
