@@ -1,4 +1,4 @@
-Deep Reinforcemnet Learning for playing Flappy Bird Game. This is a tensorflow version, the original MxNet version is [here](https://github.com/li-haoran/DRL-FlappyBird)
+Deep Reinforcemnet Learning for playing Flappy Bird Game. This is a tensorflow version, the original MxNet version is [here](https://github.com/yenchenlin/DeepLearningFlappyBird)
 
 1. dependences?
 
